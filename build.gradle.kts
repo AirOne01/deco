@@ -17,6 +17,7 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:1.20.1-R0.1-SNAPSHOT")
     implementation("xyz.xenondevs.invui:invui:1.14")
     compileOnly("com.mojang:authlib:1.5.21")
+    implementation("org.json:json:20171018")
 }
 
 tasks.test {

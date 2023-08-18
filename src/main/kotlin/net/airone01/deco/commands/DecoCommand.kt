@@ -1,6 +1,9 @@
 package net.airone01.deco.commands
 
-import org.bukkit.Bukkit
+import com.mojang.authlib.GameProfile
+import com.mojang.authlib.properties.Property
+import com.mojang.authlib.properties.PropertyMap
+import net.airone01.deco.Reflections
 import org.bukkit.Material
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
@@ -18,13 +21,17 @@ import xyz.xenondevs.invui.item.impl.AbstractItem
 import xyz.xenondevs.invui.item.impl.SimpleItem
 import xyz.xenondevs.invui.item.impl.controlitem.PageItem
 import xyz.xenondevs.invui.window.Window
-import java.util.UUID
+import java.io.BufferedReader
+import java.io.IOException
+import java.io.Reader
+import java.net.URL
+import java.nio.charset.Charset
+import java.util.*
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import com.mojang.authlib.GameProfile;
-import com.mojang.authlib.properties.Property;
-import com.mojang.authlib.properties.PropertyMap;
-import net.airone01.deco.Reflections
+import org.json.JSONException
+import java.io.InputStreamReader
+import org.json.JSONObject
 
 class BackItem : PageItem(false) {
     override fun getItemProvider(gui: PagedGui<*>): ItemProvider {
@@ -52,11 +59,13 @@ class ForwardItem : PageItem(true) {
     }
 }
 
-class HeadItem : AbstractItem() {
+class HeadItem(key: String) : AbstractItem() {
+    val key2 = key
+
     @OptIn(ExperimentalEncodingApi::class)
     fun getCustomSkull(url: String?): ItemStack {
         val profile = GameProfile(UUID.randomUUID(), null)
-        val propertyMap: PropertyMap = profile.getProperties()
+        val propertyMap: PropertyMap = profile.properties
             ?: throw IllegalStateException("Profile doesn't contain a property map")
 
         val encodedData: ByteArray =
@@ -65,14 +74,13 @@ class HeadItem : AbstractItem() {
         val head = ItemStack(Material.PLAYER_HEAD, 1)
         val headMeta = head.itemMeta as SkullMeta
         val headMetaClass: Class<*> = headMeta.javaClass
-        Reflections.getField(headMetaClass, "profile", GameProfile::class.java).set(headMeta, profile)
+        Reflections.getField(headMetaClass, "profile", GameProfile::class.java)[headMeta] = profile
         head.setItemMeta(headMeta)
         return head
     }
 
     private fun getHead(): ItemStack {
-        val item = getCustomSkull("http://textures.minecraft.net/texture/c4f8edfdfe364ec96ef46b79dc08539eb35c573e2196c51177be3e5b5a7")
-        return item
+        return getCustomSkull("http://textures.minecraft.net/texture/$key2")
     }
 
     override fun getItemProvider(): ItemProvider {
@@ -93,6 +101,28 @@ class HeadItem : AbstractItem() {
 }
 
 class DecoCommand: CommandExecutor {
+    @Throws(IOException::class)
+    private fun readAll(rd: Reader): String {
+        val sb = StringBuilder()
+        var cp: Int
+        while (rd.read().also { cp = it } != -1) {
+            sb.append(cp.toChar())
+        }
+        return sb.toString()
+    }
+
+    @Throws(IOException::class, JSONException::class)
+    fun readJsonFromUrl(url: String?): JSONObject {
+        val `is` = URL(url).openStream()
+        return try {
+            val rd = BufferedReader(InputStreamReader(`is`, Charset.forName("UTF-8")))
+            val jsonText = readAll(rd)
+            JSONObject(jsonText)
+        } finally {
+            `is`.close()
+        }
+    }
+
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>?): Boolean {
         if (sender !is Player) {
             sender.sendMessage("You must be a player to use this command!")
@@ -103,10 +133,9 @@ class DecoCommand: CommandExecutor {
 
         val border = SimpleItem(ItemBuilder(Material.BLACK_STAINED_GLASS_PANE).setDisplayName("§r"))
 
-        // an example list of items to display
-        val items = listOf(HeadItem()) + Material.entries
-            .filter { !it.isAir && it.isItem }
-            .map { SimpleItem(ItemBuilder(it)) }
+        val json = readJsonFromUrl("https://deco-web.vercel.app/api/heads");
+        val apiHeads = json.getJSONArray("heads")
+        val heads = apiHeads.map { HeadItem(it.toString()) }
 
         // create the gui
         val gui = PagedGui.items()
@@ -119,7 +148,7 @@ class DecoCommand: CommandExecutor {
             .addIngredient('#', border)
             .addIngredient('<', BackItem())
             .addIngredient('>', ForwardItem())
-            .setContent(items)
+            .setContent(heads)
             .build()
 
         val window = Window.single()
