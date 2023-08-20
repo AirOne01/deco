@@ -3,7 +3,11 @@ package net.airone01.deco.commands
 import com.mojang.authlib.GameProfile
 import com.mojang.authlib.properties.Property
 import com.mojang.authlib.properties.PropertyMap
+import net.airone01.deco.Deco.Companion.isWindowsInitialized
+import net.airone01.deco.Deco.Companion.window
 import net.airone01.deco.Reflections
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.TextColor
 import org.bukkit.Material
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
@@ -14,24 +18,13 @@ import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.SkullMeta
 import xyz.xenondevs.invui.gui.PagedGui
-import xyz.xenondevs.invui.gui.structure.Markers
 import xyz.xenondevs.invui.item.ItemProvider
 import xyz.xenondevs.invui.item.builder.ItemBuilder
 import xyz.xenondevs.invui.item.impl.AbstractItem
-import xyz.xenondevs.invui.item.impl.SimpleItem
 import xyz.xenondevs.invui.item.impl.controlitem.PageItem
-import xyz.xenondevs.invui.window.Window
-import java.io.BufferedReader
-import java.io.IOException
-import java.io.Reader
-import java.net.URL
-import java.nio.charset.Charset
 import java.util.*
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import org.json.JSONException
-import java.io.InputStreamReader
-import org.json.JSONObject
 
 class BackItem : PageItem(false) {
     override fun getItemProvider(gui: PagedGui<*>): ItemProvider {
@@ -60,7 +53,7 @@ class ForwardItem : PageItem(true) {
 }
 
 class HeadItem(key: String) : AbstractItem() {
-    val key2 = key
+    private val key2 = key
 
     @OptIn(ExperimentalEncodingApi::class)
     fun getCustomSkull(url: String?): ItemStack {
@@ -80,13 +73,11 @@ class HeadItem(key: String) : AbstractItem() {
     }
 
     private fun getHead(): ItemStack {
-        return getCustomSkull("http://textures.minecraft.net/texture/$key2")
+        return getCustomSkull("https://textures.minecraft.net/texture/$key2")
     }
 
     override fun getItemProvider(): ItemProvider {
-        val item = ItemBuilder(getHead())
-
-        return item
+        return ItemBuilder(getHead())
     }
 
     override fun handleClick(clickType: ClickType, player: Player, event: InventoryClickEvent) {
@@ -101,64 +92,17 @@ class HeadItem(key: String) : AbstractItem() {
 }
 
 class DecoCommand: CommandExecutor {
-    @Throws(IOException::class)
-    private fun readAll(rd: Reader): String {
-        val sb = StringBuilder()
-        var cp: Int
-        while (rd.read().also { cp = it } != -1) {
-            sb.append(cp.toChar())
-        }
-        return sb.toString()
-    }
-
-    @Throws(IOException::class, JSONException::class)
-    fun readJsonFromUrl(url: String?): JSONObject {
-        val `is` = URL(url).openStream()
-        return try {
-            val rd = BufferedReader(InputStreamReader(`is`, Charset.forName("UTF-8")))
-            val jsonText = readAll(rd)
-            JSONObject(jsonText)
-        } finally {
-            `is`.close()
-        }
-    }
-
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>?): Boolean {
         if (sender !is Player) {
             sender.sendMessage("You must be a player to use this command!")
             return true
         }
 
-        val p = sender as Player
-
-        val border = SimpleItem(ItemBuilder(Material.BLACK_STAINED_GLASS_PANE).setDisplayName("§r"))
-
-        val json = readJsonFromUrl("https://deco-web.vercel.app/api/heads");
-        val apiHeads = json.getJSONArray("heads")
-        val heads = apiHeads.map { HeadItem(it.toString()) }
-
-        // create the gui
-        val gui = PagedGui.items()
-            .setStructure(
-                "x x x x x x x x x",
-                "x x x x x x x x x",
-                "x x x x x x x x x",
-                "< x x x x x x x >")
-            .addIngredient('x', Markers.CONTENT_LIST_SLOT_HORIZONTAL) // where paged items should be put
-            .addIngredient('#', border)
-            .addIngredient('<', BackItem())
-            .addIngredient('>', ForwardItem())
-            .setContent(heads)
-            .build()
-
-        val window = Window.single()
-            .setViewer(p)
-            .setTitle("Deco")
-            .setGui(gui)
-            .build()
-
-        window.open()
-
+        if (isWindowsInitialized()) {
+            window.open(sender)
+        } else {
+            sender.sendMessage{Component.text("Deco is still loading, please wait a few seconds and try again.").color(TextColor.color(0xFFAA00))}
+        }
         return true
     }
 }
